@@ -139,7 +139,7 @@ data "aws_iam_policy_document" "infra_network" {
 
   statement {
     sid       = "Ec2Lectura"
-    actions   = ["ec2:Describe*"]
+    actions   = ["ec2:Describe*", "ec2:GetSecurityGroupsForVpc"]
     resources = ["*"] # Describe* de EC2 no admite restriccion por recurso
   }
 
