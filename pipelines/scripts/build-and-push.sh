@@ -45,7 +45,7 @@ for svc in backend frontend; do
   fi
 
   log "Construyendo $svc..."
-  docker build --pull -t "$uri" "$ctx" || die "Falló docker build de $svc."
+  docker build --pull --provenance=false --sbom=false -t "$uri" "$ctx" || die "Falló docker build de $svc."
   log "Subiendo $uri ..."
   docker push "$uri" >/dev/null || die "Falló docker push de $svc (¿repositorio $repo existe y el rol tiene permisos?)."
 

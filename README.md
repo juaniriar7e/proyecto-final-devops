@@ -4,9 +4,8 @@ Gestor de tareas (React + FastAPI + DynamoDB) desplegado en **ECS Fargate** detr
 pipelines de **GitHub Actions** (infraestructura, build, despliegue) que se autentican en AWS por **OIDC**, sin
 llaves estáticas. Toda la infraestructura está en Terraform.
 
-> **Estado de la entrega:** el código, las pruebas locales y los scripts están listos, pero **el despliegue real
-> en AWS todavía no se ha ejecutado**. La sección [Evidencia de la demo](#evidencia-de-la-demo) tiene marcadores
-> `<!-- PENDIENTE -->` que se completan tras la primera ejecución.
+> **Estado de la entrega:** el despliegue real en AWS se ejecutó con los tres pipelines; ver [Evidencia de la demo](#evidencia-de-la-demo).
+> Quedan pendientes las capturas, el vídeo y la demostración de rollback y persistencia.
 
 ## Arquitectura
 
@@ -179,21 +178,27 @@ ECR. Para no dejar gasto, **en este orden**:
 
 ## Evidencia de la demo
 
-El despliegue real en AWS **todavía no se ha ejecutado**; estos datos se completan después de la primera ejecución.
-
-- URL de la aplicación (ALB): <!-- PENDIENTE: URL del ALB -->
-- Ejecución del pipeline 1 (`1-infra`): <!-- PENDIENTE: enlace a la ejecución -->
-- Ejecución del pipeline 2 (`2-build`): <!-- PENDIENTE: enlace a la ejecución -->
-- Ejecución del pipeline 3 (`3-deploy`): <!-- PENDIENTE: enlace a la ejecución -->
+- URL de la aplicación (ALB): http://triplepipe-demo-alb-1812143270.us-east-1.elb.amazonaws.com (solo responde mientras la infraestructura exista)
+- Pipeline 1 (`1-infra`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764116945
+- Pipeline 2 (`2-build`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764516353 (imagen `sha-7c09786`, 30 pruebas de backend y 6 de frontend)
+- Pipeline 3 (`3-deploy`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764637513 (smoke test superado, ambos servicios 1/1 y estables)
+- La aplicación se probó en el navegador y contra DynamoDB real.
 - Captura de ECR con las imágenes `sha-<7>`: <!-- PENDIENTE: captura -->
 - Captura de la aplicación con las versiones en el pie: <!-- PENDIENTE: captura -->
-- Evidencia de rollback (ejecución o captura): <!-- PENDIENTE: enlace o captura -->
+- Evidencia de rollback (ejecución o captura): <!-- PENDIENTE: no demostrado todavía -->
+- Persistencia tras un redespliegue: <!-- PENDIENTE: no demostrado todavía -->
 - Enlace al vídeo de la demo, si aplica: <!-- PENDIENTE: enlace -->
+
+**Lección aprendida.** Los intentos fallidos de `1-infra` (runs 41761268782, 41761592204 y 41763376375) revelaron: (1) los repos
+nuevos de GitHub emiten un `sub` OIDC inmutable (`repo:<owner>@<id>/<repo>@<id>`), por lo que el bootstrap necesita
+`github_subject_prefix`; y (2) permisos que faltaban al rol `infra` (`ec2:GetSecurityGroupsForVpc` y el etiquetado de task
+definitions de ECS). Se corrigieron en `terraform/bootstrap` y se volvió a aplicar.
 
 ## Limitaciones conocidas y mejoras
 
 - **Solo HTTP:** no hay dominio, por tanto no hay TLS. Mejora: dominio en Route 53 y certificado de ACM con HTTPS.
-- **Permisos del rol `infra` sin probar contra AWS real:** no se han ejecutado contra AWS real; la primera ejecución puede revelar permisos faltantes (error `AccessDenied`) que habrá que ajustar.
+- **Permisos del rol `infra`:** probados para crear la infraestructura (tras los ajustes de la lección aprendida), pero el `destroy` no se ha probado y podría revelar permisos faltantes.
+- **Escaneo de ECR:** `build-and-push.sh` usa `--provenance=false --sbom=false` para que la etiqueta apunte a una imagen escaneable y no a un índice OCI; solo queda confirmado tras una nueva compilación.
 - Sin autenticación de usuarios, un solo ambiente y sin autoscaling.
 - Sin NAT ni VPC endpoints (las tareas salen por IP pública), sin flow logs ni claves KMS propias, por costo.
 - El primer commit usa `[skip ci]` para no disparar `2-build` antes de que exista ECR (ver paso 5).
