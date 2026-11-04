@@ -18,7 +18,9 @@ COPY docker/40-version-json.sh /docker-entrypoint.d/40-version-json.sh
 
 # El script escribe version.json en el directorio raiz: solo ese directorio pasa a ser del usuario 101.
 USER root
-RUN chmod 0755 /docker-entrypoint.d/40-version-json.sh \
+# Parches de seguridad de Alpine disponibles sobre la imagen base.
+RUN apk upgrade --no-cache \
+ && chmod 0755 /docker-entrypoint.d/40-version-json.sh \
  && chown 101:101 /usr/share/nginx/html
 USER 101
 
