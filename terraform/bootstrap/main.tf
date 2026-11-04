@@ -12,9 +12,12 @@ locals {
   oidc_arn  = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 
   # Subjects permitidos: solo la rama main y el environment production del repo.
+  # Si el repo usa "sub" inmutable (repos nuevos de GitHub), el prefijo es
+  # "repo:<owner>@<id>/<repo>@<id>" (ver var.github_subject_prefix).
+  subject_prefix = var.github_subject_prefix != "" ? var.github_subject_prefix : "repo:${var.github_repository}"
   allowed_subjects = [
-    "repo:${var.github_repository}:ref:refs/heads/main",
-    "repo:${var.github_repository}:environment:production",
+    "${local.subject_prefix}:ref:refs/heads/main",
+    "${local.subject_prefix}:environment:production",
   ]
 
   arn_base = "arn:${local.partition}"

@@ -85,7 +85,8 @@ real): `pipelines/tests/run-tests.sh`.
    terraform output github_variables
    ```
    Si la cuenta ya tiene el proveedor OIDC de GitHub, usa `create_github_oidc_provider = false`. El estado local de
-   `bootstrap/` no se versiona: conserva el archivo.
+   `bootstrap/` no se versiona: conserva el archivo. Si el repo usa `sub` inmutable (repos nuevos de GitHub), añade
+   `-var github_subject_prefix=...` (ver `terraform/bootstrap/terraform.tfvars.example`).
 2. **Crear el repositorio en GitHub, todavía sin subir el código.** Así el primer `push` ya encuentra las variables:
    ```bash
    gh repo create owner/repo --public   # o --private

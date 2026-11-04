@@ -31,3 +31,9 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "github_subject_prefix" {
+  description = "Prefijo del claim sub del token OIDC. Vacío = repo:<owner/repo>. Los repos nuevos de GitHub usan sub inmutable (repo:<owner>@<id>/<repo>@<id>); se consulta con: gh api repos/<owner/repo>/actions/oidc/customization/sub (campo sub_claim_prefix)."
+  type        = string
+  default     = ""
+}
