@@ -1,0 +1,9 @@
+# Copiar a terraform.tfvars (opcional: todos los valores tienen un default).
+aws_region   = "us-east-1"
+project_name = "triplepipe"
+environment  = "demo"
+
+# vpc_cidr           = "10.20.0.0/16"
+# log_retention_days = 7
+# task_cpu           = 256
+# task_memory        = 512

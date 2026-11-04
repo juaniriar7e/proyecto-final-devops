@@ -1,0 +1,5 @@
+# Copiar a terraform.tfvars y ajustar.
+github_repository = "OWNER/REPO"
+
+# aws_region                  = "us-east-1"
+# create_github_oidc_provider = true # false si la cuenta ya tiene el proveedor de GitHub

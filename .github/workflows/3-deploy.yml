@@ -1,0 +1,67 @@
+# Pipeline 3: despliegue a ECS con smoke test y rollback automático.
+name: 3-deploy
+
+on:
+  workflow_run:
+    workflows: ['2-build']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Etiqueta de imagen a desplegar (p. ej. sha-1a2b3c4)'
+        type: string
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Desplegar
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      PROJECT_PREFIX: ${{ vars.PROJECT_PREFIX }}
+    steps:
+      - name: Determinar etiqueta y commit
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "image_tag=sha-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "ref=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_DEPLOY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Desplegar
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: pipelines/scripts/deploy.sh
+      - name: Smoke test
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          url="$(pipelines/scripts/alb-url.sh)"
+          pipelines/scripts/smoke-test.sh "$url" "$IMAGE_TAG"
+      - name: Rollback
+        if: failure()
+        run: pipelines/scripts/rollback.sh

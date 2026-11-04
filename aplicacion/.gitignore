@@ -1,0 +1,23 @@
+# Dependencias y builds del frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+
+# Python: venvs, cachés de pytest y bytecode
+backend/.venv/
+backend/venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Entorno y logs
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+.DS_Store

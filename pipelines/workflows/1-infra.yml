@@ -1,0 +1,100 @@
+# Pipeline 1: infraestructura con Terraform.
+# En pull_request solo se valida (fmt + validate sin backend): los PR no reciben rol de AWS.
+name: 1-infra
+
+on:
+  push:
+    branches: [main]
+    paths: ['terraform/**']
+  pull_request:
+    paths: ['terraform/**']
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Acción a ejecutar'
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      confirm:
+        description: 'Solo para destroy: escribe triplepipe-demo'
+        type: string
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  PROJECT_PREFIX: ${{ vars.PROJECT_PREFIX }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_ACTION: ${{ inputs.action }}
+
+jobs:
+  validate:
+    name: Formato y validación
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.10'
+          terraform_wrapper: false
+      - name: Verificar confirmación de destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: pipelines/scripts/terraform-ci.sh confirm-destroy
+      - name: fmt -check y validate
+        run: pipelines/scripts/terraform-ci.sh check
+
+  plan:
+    name: Plan
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.10'
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_INFRA }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: terraform plan
+        run: pipelines/scripts/terraform-ci.sh plan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          if-no-files-found: error
+          retention-days: 3
+
+  apply:
+    name: Apply (production)
+    needs: plan
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'destroy'))
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.10'
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_INFRA }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform
+      - name: terraform apply del plan guardado
+        run: pipelines/scripts/terraform-ci.sh apply

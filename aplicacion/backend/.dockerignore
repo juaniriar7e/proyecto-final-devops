@@ -1,0 +1,11 @@
+# Contexto de build del backend: solo lo necesario para la imagen.
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.venv
+venv
+tests
+requirements-dev.txt
+pytest.ini
+Dockerfile
+.dockerignore

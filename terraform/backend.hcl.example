@@ -1,0 +1,3 @@
+# Copiar a backend.hcl (ignorado por git). El bucket es la salida tf_state_bucket del bootstrap.
+bucket = "triplepipe-tfstate-<ACCOUNT_ID>"
+region = "us-east-1"

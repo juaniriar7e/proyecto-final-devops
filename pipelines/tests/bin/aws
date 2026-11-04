@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Stub falso de `aws` para pruebas. NO llama a AWS real.
+# Estado en $FAKE_AWS_DIR: td_<familia>_<rev>.json, current_<servicio>, calls.log
+# Variables: FAKE_MISSING_TAGS (etiquetas ECR inexistentes, separadas por espacio), FAKE_ALB_DNS.
+set -euo pipefail
+D="${FAKE_AWS_DIR:?FAKE_AWS_DIR no definido}"
+args=("$@")
+svc_name="${args[0]:-}"; op="${args[1]:-}"
+echo "$*" >>"$D/calls.log"
+
+opt() { # opt --nombre -> valor del primer argumento tras la opción
+  local i
+  for ((i = 0; i < ${#args[@]}; i++)); do
+    [[ "${args[$i]}" == "$1" ]] && { printf '%s' "${args[$((i + 1))]}"; return 0; }
+  done
+  return 1
+}
+arn_of() { echo "arn:aws:ecs:us-east-1:000000000000:task-definition/$1:$2"; }
+
+case "$svc_name $op" in
+  "sts get-caller-identity") echo '{"Account":"000000000000"}' ;;
+  "ecr describe-images")
+    tag="$(opt --image-ids)"; tag="${tag#imageTag=}"
+    for m in ${FAKE_MISSING_TAGS:-}; do
+      if [[ "$m" == "$tag" ]]; then
+        echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254
+      fi
+    done
+    echo '{"imageDetails":[{}]}' ;;
+  "ecs describe-services")
+    s="$(opt --services)"; s="${s##*-}"
+    jq -n --arg a "$(cat "$D/current_$s")" '{services:[{taskDefinition:$a}]}' ;;
+  "ecs describe-task-definition")
+    a="$(opt --task-definition)"; fam_rev="${a##*/}"; f="$D/td_${fam_rev/:/_}.json"
+    [[ -f "$f" ]] || { echo "TaskDefinition no encontrada" >&2; exit 254; }
+    jq -n --slurpfile t "$f" '{taskDefinition:$t[0]}' ;;
+  "ecs register-task-definition")
+    f="$(opt --cli-input-json)"; f="${f#file://}"
+    # El stub rechaza campos de solo lectura, como haría la API real.
+    for k in taskDefinitionArn revision status requiresAttributes compatibilities registeredAt registeredBy; do
+      if jq -e --arg k "$k" 'has($k)' "$f" >/dev/null; then echo "ClientException: Unknown parameter $k" >&2; exit 254; fi
+    done
+    fam="$(jq -r .family "$f")"
+    rev=$(( $(find "$D" -name "td_${fam}_*.json" | wc -l) + 1 ))
+    jq --arg a "$(arn_of "$fam" "$rev")" --argjson r "$rev" '. + {taskDefinitionArn:$a, revision:$r, status:"ACTIVE"}' "$f" >"$D/td_${fam}_${rev}.json"
+    jq -n --arg a "$(arn_of "$fam" "$rev")" '{taskDefinition:{taskDefinitionArn:$a}}' ;;
+  "ecs update-service")
+    s="$(opt --service)"; s="${s##*-}"
+    if t="$(opt --task-definition)"; then echo "$t" >"$D/current_$s"; fi
+    echo '{}' ;;
+  "ecs wait") : ;;
+  "elbv2 describe-load-balancers")
+    jq -n --arg d "${FAKE_ALB_DNS:-127.0.0.1:1}" '{LoadBalancers:[{DNSName:$d}]}' ;;
+  *) echo "stub aws: operación no soportada: $*" >&2; exit 2 ;;
+esac

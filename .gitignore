@@ -1,0 +1,32 @@
+# Secretos y entorno local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Sistema operativo y editores
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Terraform: estado, cachés y planes (se conservan *.example y .terraform.lock.hcl)
+*.tfstate
+*.tfstate.*
+.terraform/
+tfplan
+*.tfplan
+crash.log
+terraform.tfvars
+backend.hcl

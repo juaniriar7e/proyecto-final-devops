@@ -1,0 +1,10 @@
+# Contexto de build del frontend: el build de la imagen instala y compila dentro del contenedor.
+node_modules
+dist
+coverage
+.vite
+*.log
+npm-debug.log*
+Dockerfile
+.dockerignore
+docker-compose.yml

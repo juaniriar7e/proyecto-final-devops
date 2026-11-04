@@ -1,0 +1,59 @@
+# Pipeline 2: pruebas, build de imágenes Docker y push a ECR.
+name: 2-build
+
+on:
+  push:
+    branches: [main]
+    paths: ['aplicacion/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pruebas del backend
+        working-directory: aplicacion/backend
+        run: |
+          pip install -r requirements.txt
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install pytest httpx; fi
+          python -m pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aplicacion/frontend/package-lock.json
+      - name: Pruebas y build del frontend
+        working-directory: aplicacion/frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+  build:
+    name: Build y push a ECR
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_BUILD }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Construir y subir imágenes
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROJECT_PREFIX: ${{ vars.PROJECT_PREFIX }}
+        run: pipelines/scripts/build-and-push.sh
