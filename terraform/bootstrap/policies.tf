@@ -289,6 +289,17 @@ data "aws_iam_policy_document" "infra_compute" {
   }
 
   statement {
+    sid = "EcsEtiquetasTaskDefinitions"
+    # El proveedor etiqueta la task definition al registrarla (default_tags)
+    actions = [
+      "ecs:ListTagsForResource",
+      "ecs:TagResource",
+      "ecs:UntagResource",
+    ]
+    resources = ["${local.arn_base}:ecs:${local.region}:${local.account_id}:task-definition/${var.project_name}-*:*"]
+  }
+
+  statement {
     sid       = "EcsTareasParaDrenarServicios"
     actions   = ["ecs:DescribeTasks", "ecs:ListTasks", "ecs:StopTask"]
     resources = ["*"]
