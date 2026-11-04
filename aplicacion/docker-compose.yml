@@ -23,7 +23,7 @@ services:
       - no-new-privileges:true
 
   gateway:
-    image: nginxinc/nginx-unprivileged:1.27-alpine
+    image: nginxinc/nginx-unprivileged:1.31-alpine
     ports:
       - "127.0.0.1:8081:8080"
     volumes:

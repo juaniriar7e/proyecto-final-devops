@@ -31,6 +31,9 @@ summary ""
 summary "| Servicio | URI | Resultado | Hallazgos del escaneo |"
 summary "|---|---|---|---|"
 
+SCAN_MAX_INTENTOS="${SCAN_MAX_INTENTOS:-18}"
+SCAN_ESPERA="${SCAN_ESPERA:-10}"
+
 for svc in backend frontend; do
   repo="${PROJECT_PREFIX}-${svc}"
   uri="${registry}/${repo}:${IMAGE_TAG}"
@@ -49,15 +52,31 @@ for svc in backend frontend; do
   log "Subiendo $uri ..."
   docker push "$uri" >/dev/null || die "Falló docker push de $svc (¿repositorio $repo existe y el rol tiene permisos?)."
 
+  # El escaneo de ECR puede tardar en existir: `aws ecr wait` falla de inmediato con
+  # ScanNotFoundException, así que se sondea hasta ~3 min (no bloquea el pipeline si no llega).
   findings="n/d"
-  if aws ecr wait image-scan-complete --region "$AWS_REGION" --repository-name "$repo" \
-       --image-id "imageTag=$IMAGE_TAG" 2>/dev/null; then
-    findings="$(aws ecr describe-image-scan-findings --region "$AWS_REGION" --repository-name "$repo" \
-      --image-id "imageTag=$IMAGE_TAG" --output json 2>/dev/null \
-      | jq -r '.imageScanFindings.findingSeverityCounts // {} | to_entries | map("\(.key): \(.value)") | join(", ")' 2>/dev/null || true)"
+  critical=0
+  scan_json=""
+  for ((i = 1; i <= SCAN_MAX_INTENTOS; i++)); do
+    scan_json="$(aws ecr describe-image-scan-findings --region "$AWS_REGION" --repository-name "$repo" \
+      --image-id "imageTag=$IMAGE_TAG" --output json 2>/dev/null || true)"
+    if [[ "$(jq -r '.imageScanStatus.status // empty' <<<"$scan_json" 2>/dev/null || true)" == "COMPLETE" ]]; then
+      break
+    fi
+    scan_json=""
+    sleep "$SCAN_ESPERA"
+  done
+  if [[ -n "$scan_json" ]]; then
+    findings="$(jq -r '.imageScanFindings.findingSeverityCounts // {} | to_entries | map("\(.key): \(.value)") | join(", ")' <<<"$scan_json" 2>/dev/null || true)"
     findings="${findings:-sin hallazgos}"
+    critical="$(jq -r '.imageScanFindings.findingSeverityCounts.CRITICAL // 0' <<<"$scan_json" 2>/dev/null || echo 0)"
   else
-    warn "No se obtuvo el resultado del escaneo de $repo (no bloquea el pipeline)."
+    warn "No se obtuvo el resultado del escaneo de $repo tras $((SCAN_MAX_INTENTOS * SCAN_ESPERA))s (no bloquea el pipeline)."
+  fi
+  if [[ "$critical" =~ ^[0-9]+$ && "$critical" -gt 0 ]]; then
+    warn "$svc tiene $critical vulnerabilidad(es) CRITICAL en el escaneo de ECR."
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then printf '::warning::%s: %s vulnerabilidades CRITICAL en ECR\n' "$svc" "$critical"; fi
+    findings="**CRITICAL: $critical** ($findings)"
   fi
   log "Escaneo de $svc: $findings"
   summary "| $svc | \`$uri\` | subida | $findings |"
