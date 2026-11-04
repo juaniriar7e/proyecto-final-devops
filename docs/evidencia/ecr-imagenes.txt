@@ -1,0 +1,11 @@
+Imagenes en ECR (us-east-1), consultadas con la API de ECR (DescribeImages y DescribeImageScanFindings).
+Columnas: repositorio, etiqueta, fecha de subida (UTC), estado del escaneo, hallazgos por severidad.
+
+frontend  sha-7c09786  2026-11-04 03:03  sin escaneo (primer build, indice OCI con atestaciones)  -
+frontend  sha-590818d  2026-11-04 03:22  COMPLETE  CRITICAL 10, HIGH 60, MEDIUM 56, LOW 12
+frontend  sha-466491e  2026-11-04 03:26  COMPLETE  CRITICAL 8, HIGH 22
+frontend  sha-a514707  2026-11-04 03:31  COMPLETE  sin hallazgos   (version desplegada)
+backend   sha-7c09786  2026-11-04 03:02  sin escaneo (primer build, indice OCI con atestaciones)  -
+backend   sha-590818d  2026-11-04 03:21  COMPLETE  HIGH 3, MEDIUM 9, LOW 3
+backend   sha-466491e  2026-11-04 03:26  COMPLETE  HIGH 3, MEDIUM 9, LOW 3
+backend   sha-a514707  2026-11-04 03:31  COMPLETE  HIGH 3, MEDIUM 9, LOW 3   (version desplegada; residuales de glibc y zlib de Debian)

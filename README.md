@@ -4,8 +4,9 @@ Gestor de tareas (React + FastAPI + DynamoDB) desplegado en **ECS Fargate** detr
 pipelines de **GitHub Actions** (infraestructura, build, despliegue) que se autentican en AWS por **OIDC**, sin
 llaves estáticas. Toda la infraestructura está en Terraform.
 
-> **Estado de la entrega:** el despliegue real en AWS se ejecutó con los tres pipelines; ver [Evidencia de la demo](#evidencia-de-la-demo).
-> Quedan pendientes las capturas, el vídeo y la demostración de rollback y persistencia.
+> **Estado de la entrega:** el despliegue real en AWS se ejecutó con los tres pipelines y la versión actual es `sha-a514707`;
+> ver [Evidencia de la demo](#evidencia-de-la-demo). El rollback automático solo se probó con un `aws` simulado (no se ha
+> demostrado en AWS real) y el `destroy` aún no se ha ejecutado.
 
 ## Arquitectura
 
@@ -178,16 +179,20 @@ ECR. Para no dejar gasto, **en este orden**:
 
 ## Evidencia de la demo
 
+Versión actual: `sha-a514707` (commit `a514707`), con ambos servicios 1/1 en la revisión `:3` de sus task definitions.
+
 - URL de la aplicación (ALB): http://triplepipe-demo-alb-1812143270.us-east-1.elb.amazonaws.com (solo responde mientras la infraestructura exista)
-- Pipeline 1 (`1-infra`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764116945
-- Pipeline 2 (`2-build`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764516353 (imagen `sha-7c09786`, 30 pruebas de backend y 6 de frontend)
-- Pipeline 3 (`3-deploy`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764637513 (smoke test superado, ambos servicios 1/1 y estables)
-- La aplicación se probó en el navegador y contra DynamoDB real.
-- Captura de ECR con las imágenes `sha-<7>`: <!-- PENDIENTE: captura -->
-- Captura de la aplicación con las versiones en el pie: <!-- PENDIENTE: captura -->
-- Evidencia de rollback (ejecución o captura): <!-- PENDIENTE: no demostrado todavía -->
-- Persistencia tras un redespliegue: <!-- PENDIENTE: no demostrado todavía -->
-- Enlace al vídeo de la demo, si aplica: <!-- PENDIENTE: enlace -->
+- Pipeline 1 (`1-infra`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41764116945 (captura: [`pipeline-1.png`](docs/evidencia/pipeline-1.png))
+- Pipeline 2 (`2-build`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41767502974 (`sha-a514707`, 30 pruebas de backend y 6 de frontend; captura: [`pipeline-2.png`](docs/evidencia/pipeline-2.png))
+- Pipeline 3 (`3-deploy`), con éxito: https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/41767697830 (smoke test superado, servicios 1/1; captura: [`pipeline-3.png`](docs/evidencia/pipeline-3.png))
+- La aplicación se probó en el navegador y contra DynamoDB real. Captura con la tarea testigo y las versiones en el pie: [`app.png`](docs/evidencia/app.png).
+- Imágenes en ECR y resultados del escaneo: [`ecr-imagenes.txt`](docs/evidencia/ecr-imagenes.txt).
+- **Escaneo de ECR confirmado.** En `sha-a514707`, el frontend no tiene hallazgos y el backend tiene HIGH 3, MEDIUM 9 y LOW 3 (residuales de `glibc` y `zlib` de Debian que `apt-get upgrade` no redujo). La primera medición del frontend (`sha-590818d`) dio CRITICAL 10, HIGH 60, MEDIUM 56 y LOW 12; se corrigió con la imagen base `nginx-unprivileged:1.31-alpine` y `apk upgrade`. El pipeline ahora reintenta hasta tener el resultado y avisa si hay CRITICAL.
+- **Persistencia confirmada.** Una tarea testigo creada con `sha-7c09786` sigue disponible con `sha-a514707` tras redesplegar. También está probado el circuito de redespliegue con etiquetas inmutables.
+- **Rollback automático: NO demostrado en AWS real.** Solo se probó con un `aws` simulado (26 pruebas de scripts en `pipelines/tests/run-tests.sh`).
+- **`destroy`: NO ejecutado.** El simulador de políticas IAM da `allowed` a 25 acciones de borrado del rol `infra` con ARN reales; la ejecución real se reserva para después de la demo.
+- Vídeo de la demo: presentación en vivo; sin vídeo por ahora.
+- Dos ejecuciones de `3-deploy` (41766674873 y 41767206211) se cancelaron porque las imágenes se reconstruyeron para corregir vulnerabilidades antes de desplegar.
 
 **Lección aprendida.** Los intentos fallidos de `1-infra` (runs 41761268782, 41761592204 y 41763376375) revelaron: (1) los repos
 nuevos de GitHub emiten un `sub` OIDC inmutable (`repo:<owner>@<id>/<repo>@<id>`), por lo que el bootstrap necesita
@@ -197,8 +202,9 @@ definitions de ECS). Se corrigieron en `terraform/bootstrap` y se volvió a apli
 ## Limitaciones conocidas y mejoras
 
 - **Solo HTTP:** no hay dominio, por tanto no hay TLS. Mejora: dominio en Route 53 y certificado de ACM con HTTPS.
-- **Permisos del rol `infra`:** probados para crear la infraestructura (tras los ajustes de la lección aprendida), pero el `destroy` no se ha probado y podría revelar permisos faltantes.
-- **Escaneo de ECR:** `build-and-push.sh` usa `--provenance=false --sbom=false` para que la etiqueta apunte a una imagen escaneable y no a un índice OCI; solo queda confirmado tras una nueva compilación.
+- **Permisos del rol `infra`:** probados para crear la infraestructura (tras los ajustes de la lección aprendida). El `destroy` no se ha ejecutado; el simulador de políticas IAM da `allowed` a 25 acciones de borrado, pero la ejecución real podría revelar permisos faltantes.
+- **Escaneo de ECR:** `build-and-push.sh` usa `--provenance=false --sbom=false` para que la etiqueta apunte a una imagen escaneable; confirmado con `sha-a514707`. Queda un residual en el backend (HIGH 3, MEDIUM 9, LOW 3, de `glibc` y `zlib` de Debian) que `apt-get upgrade` no redujo.
+- **Rollback automático:** probado solo con un `aws` simulado; no se ha demostrado en AWS real.
 - Sin autenticación de usuarios, un solo ambiente y sin autoscaling.
 - Sin NAT ni VPC endpoints (las tareas salen por IP pública), sin flow logs ni claves KMS propias, por costo.
 - El primer commit usa `[skip ci]` para no disparar `2-build` antes de que exista ECR (ver paso 5).
