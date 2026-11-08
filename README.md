@@ -5,8 +5,8 @@ pipelines de **GitHub Actions** (infraestructura, build, despliegue) que se aute
 llaves estáticas. Toda la infraestructura está en Terraform.
 
 > **Estado de la entrega:** el despliegue real en AWS se ejecutó con los tres pipelines y la versión actual es `sha-a514707`;
-> ver [Evidencia de la demo](#evidencia-de-la-demo). El rollback automático solo se probó con un `aws` simulado (no se ha
-> demostrado en AWS real) y el `destroy` aún no se ha ejecutado.
+> ver [Evidencia de la demo](#evidencia-de-la-demo). El rollback automático se demostró en AWS real (ver la evidencia)
+> y el único pendiente es ejecutar el `destroy`, que se hará después de la demo.
 
 ## Arquitectura
 
@@ -189,7 +189,15 @@ Versión actual: `sha-a514707` (commit `a514707`), con ambos servicios 1/1 en la
 - Imágenes en ECR y resultados del escaneo: [`ecr-imagenes.txt`](docs/evidencia/ecr-imagenes.txt).
 - **Escaneo de ECR confirmado.** En `sha-a514707`, el frontend no tiene hallazgos y el backend tiene HIGH 3, MEDIUM 9 y LOW 3 (residuales de `glibc` y `zlib` de Debian que `apt-get upgrade` no redujo). La primera medición del frontend (`sha-590818d`) dio CRITICAL 10, HIGH 60, MEDIUM 56 y LOW 12; se corrigió con la imagen base `nginx-unprivileged:1.31-alpine` y `apk upgrade`. El pipeline ahora reintenta hasta tener el resultado y avisa si hay CRITICAL.
 - **Persistencia confirmada.** Una tarea testigo creada con `sha-7c09786` sigue disponible con `sha-a514707` tras redesplegar. También está probado el circuito de redespliegue con etiquetas inmutables.
-- **Rollback automático: NO demostrado en AWS real.** Solo se probó con un `aws` simulado (26 pruebas de scripts en `pipelines/tests/run-tests.sh`).
+- **Rollback automático demostrado en AWS real** (8 de noviembre de 2026, horas UTC): https://github.com/juaniriar7e/proyecto-final-devops/actions/runs/42515429913 (captura: [`rollback.png`](docs/evidencia/rollback.png)). `3-deploy` se lanzó a mano con `image_tag=sha-rollbck` y el usuario aprobó el environment `production`. La imagen de prueba era un backend que termina con `exit 1` a propósito y un frontend copia de la imagen sana `sha-a514707`; ambas etiquetas ya se eliminaron de ECR. La ejecución termina en **failure, que es el resultado esperado**: Desplegar con éxito, Smoke test con fallo y Rollback con éxito.
+  - 19:35 el despliegue actualiza los servicios.
+  - 19:41 ECS informa "deployment failed: tasks failed to start" y "rolling back" (circuit breaker).
+  - 19:42 `deploy.sh` informa "estable".
+  - 19:42 a 19:47 el smoke test falla 30 de 30 intentos: `/api/version` devuelve `sha-a514707` en lugar de `sha-rollbck`.
+  - 19:47 a 19:49 `rollback.sh` restaura ambos servicios a la revisión `:3` (`sha-a514707`).
+  - Disponibilidad: 68 sondeos cada 10 s a `/` y `/api/version`, todos con 200 y siempre `sha-a514707`; cero cortes. Estado final: ambos servicios 1/1 en la revisión `:3` y la tarea testigo sigue.
+  - **Hallazgo:** `aws ecs wait services-stable` termina bien aunque el circuit breaker haya revertido, por lo que `deploy.sh` dice "estable" sin que corra la versión nueva. El smoke test es la capa que lo detecta. Mejora posible, no aplicada: comprobar `rolloutState` en `deploy.sh`.
+  - Además, 26 pruebas de los scripts con un `aws` simulado (`pipelines/tests/run-tests.sh`).
 - **`destroy`: NO ejecutado.** El simulador de políticas IAM da `allowed` a 25 acciones de borrado del rol `infra` con ARN reales; la ejecución real se reserva para después de la demo.
 - Vídeo de la demo: presentación en vivo; sin vídeo por ahora.
 - Dos ejecuciones de `3-deploy` (41766674873 y 41767206211) se cancelaron porque las imágenes se reconstruyeron para corregir vulnerabilidades antes de desplegar.
@@ -204,7 +212,7 @@ definitions de ECS). Se corrigieron en `terraform/bootstrap` y se volvió a apli
 - **Solo HTTP:** no hay dominio, por tanto no hay TLS. Mejora: dominio en Route 53 y certificado de ACM con HTTPS.
 - **Permisos del rol `infra`:** probados para crear la infraestructura (tras los ajustes de la lección aprendida). El `destroy` no se ha ejecutado; el simulador de políticas IAM da `allowed` a 25 acciones de borrado, pero la ejecución real podría revelar permisos faltantes.
 - **Escaneo de ECR:** `build-and-push.sh` usa `--provenance=false --sbom=false` para que la etiqueta apunte a una imagen escaneable; confirmado con `sha-a514707`. Queda un residual en el backend (HIGH 3, MEDIUM 9, LOW 3, de `glibc` y `zlib` de Debian) que `apt-get upgrade` no redujo.
-- **Rollback automático:** probado solo con un `aws` simulado; no se ha demostrado en AWS real.
+- **`deploy.sh` y el circuit breaker:** `aws ecs wait services-stable` termina bien aunque el circuit breaker haya revertido, así que `deploy.sh` informa "estable" sin que corra la versión nueva; lo detecta el smoke test (ver la evidencia del rollback). Mejora: comprobar `rolloutState` en `deploy.sh`.
 - Sin autenticación de usuarios, un solo ambiente y sin autoscaling.
 - Sin NAT ni VPC endpoints (las tareas salen por IP pública), sin flow logs ni claves KMS propias, por costo.
 - El primer commit usa `[skip ci]` para no disparar `2-build` antes de que exista ECR (ver paso 5).
