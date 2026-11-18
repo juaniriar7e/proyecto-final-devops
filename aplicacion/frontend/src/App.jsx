@@ -74,7 +74,7 @@ export default function App() {
   return (
     <main className="app">
       <header>
-        <h1>Gestor de tareas</h1>
+        <h1>Gestor de tareas · Demo 1SF241</h1>
       </header>
 
       <TaskForm onCreate={handleCreate} />
